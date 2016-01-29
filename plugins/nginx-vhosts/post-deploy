@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
 source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
+source "$PLUGIN_AVAILABLE_PATH/domains/functions"
 source "$PLUGIN_AVAILABLE_PATH/nginx-vhosts/functions"
 
 APP="$1"
@@ -8,7 +9,7 @@ if [[ -f "$DOKKU_ROOT/$APP/IP.web.1" ]] && [[ -f "$DOKKU_ROOT/$APP/PORT.web.1" ]
   if [[ "$(is_app_vhost_enabled $APP)" == "false" ]]; then
     dokku_log_info1 "VHOST support disabled. Skipping domains setup"
   elif [[ ! -f "$DOKKU_ROOT/$APP/VHOST" ]]; then
-    dokku domains:setup $APP
+    domains_setup $APP
   fi
 
   nginx_build_config $APP

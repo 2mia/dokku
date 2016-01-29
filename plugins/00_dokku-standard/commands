@@ -165,8 +165,8 @@ case "$1" in
       exit 0
     fi
 
-    SCHEME="http"; SSL="$DOKKU_ROOT/$APP/tls"; WILDCARD_SSL="$DOKKU_ROOT/tls"
-    if [[ -e "$SSL/server.crt" && -e "$SSL/server.key" ]] || [[ -e "$WILDCARD_SSL/server.crt" && -e "$WILDCARD_SSL/server.key" ]]; then
+    SCHEME="http"; SSL="$DOKKU_ROOT/$APP/tls"
+    if [[ -e "$SSL/server.crt" && -e "$SSL/server.key" ]]; then
       SCHEME="https"
     fi
 
@@ -199,6 +199,7 @@ case "$1" in
     docker version
     dokku_log_info1 "docker daemon info: "
     docker -D info
+    dokku_log_info1 "sigil version: $(sigil -v)"
     dokku_log_info1 "herokuish version: "
     docker run --rm -ti gliderlabs/herokuish:latest herokuish version
     dokku_log_info1 "dokku version: $(dokku version)"

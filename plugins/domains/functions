@@ -9,3 +9,90 @@ get_app_domains() {
     cat "$APP_VHOST_FILE"
   fi
 }
+
+domains_main() {
+  verify_app_name "$1"
+  local APP="$1"
+
+  domains_setup "$APP"
+  if [[ -f "$DOKKU_ROOT/$APP/VHOST" ]]; then
+    dokku_log_info2_quiet "$APP Domain Names"
+    get_app_domains "$APP"
+  else
+    dokku_log_fail "No domain names set for $APP"
+  fi
+}
+
+domains_setup() {
+  verify_app_name "$1"
+  local APP="$1"; local APP_VHOST_PATH="$DOKKU_ROOT/$APP/VHOST"; local GLOBAL_VHOST_PATH="$DOKKU_ROOT/VHOST"
+  local RE_IPV4="$(get_ipv4_regex)"; local RE_IPV6="$(get_ipv6_regex)"
+
+  if [[ ! -f $APP_VHOST_PATH ]]; then
+    if [[ "$(is_global_vhost_enabled)" == "true" ]]; then
+      VHOST=$(get_global_vhost)
+    else
+      VHOST=$(< "$DOKKU_ROOT/HOSTNAME")
+    fi
+    if [[ "$VHOST" =~ $RE_IPV4 ]] || [[ "$VHOST" =~ $RE_IPV6 ]]; then
+      dokku_log_info2 "unsupported vhost config found. disabling vhost support"
+      disable_app_vhost $APP --no-restart
+    else
+      if [[ -f "$GLOBAL_VHOST_PATH" ]]; then
+        dokku_log_info1 "Creating new $APP_VHOST_PATH..."
+        SUBDOMAIN=${APP/%\.${VHOST}/}
+        hostname=$(: | plugn trigger nginx-hostname $APP $SUBDOMAIN $VHOST)
+        if [[ ! -n $hostname ]]; then
+          if [[ "$APP" == *.* ]] && [[ "$SUBDOMAIN" == "$APP" ]]; then
+            hostname="${APP/\//-}"
+          else
+            hostname="${APP/\//-}.$VHOST"
+          fi
+        fi
+
+        echo "$hostname" > $APP_VHOST_PATH
+      fi
+    fi
+  fi
+}
+
+domains_add() {
+  verify_app_name "$1"
+  local APP="$1"; local APP_VHOST_PATH="$DOKKU_ROOT/$APP/VHOST"
+
+  if [[ $(egrep -w "^${2}$" "$APP_VHOST_PATH" > /dev/null 2>&1; echo $?) -eq 0 ]]; then
+    dokku_log_fail "$2 is already defined for $APP"
+    exit 1
+  fi
+
+  shift 1
+  domains_setup $APP
+  for DOMAIN in "$@"; do
+    echo "$DOMAIN" >> "$APP_VHOST_PATH"
+    dokku_log_info1 "Added $DOMAIN to $APP"
+  done
+  plugn trigger post-domains-update $APP "add" "$@"
+}
+
+domains_clear() {
+  verify_app_name "$1"
+  local APP="$1"; local APP_VHOST_PATH="$DOKKU_ROOT/$APP/VHOST"
+
+  rm -f "$APP_VHOST_PATH"
+  domains_setup $APP
+  plugn trigger post-domains-update $APP "clear"
+  dokku_log_info1 "Cleared domains in $APP"
+}
+
+domains_remove() {
+  verify_app_name "$1"
+  local APP="$1"; local APP_VHOST_PATH="$DOKKU_ROOT/$APP/VHOST"
+
+  shift 1
+  domains_setup $APP
+  for DOMAIN in "$@"; do
+    sed -i "/^$DOMAIN$/d" "$DOKKU_ROOT/$APP/VHOST"
+    dokku_log_info1 "Removed $DOMAIN from $APP"
+  done
+  plugn trigger post-domains-update $APP "remove" "$@"
+}

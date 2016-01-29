@@ -9,7 +9,6 @@ setup() {
 teardown() {
   rm -rf /home/dokku/$TEST_APP/tls /home/dokku/tls
   destroy_app
-  disable_tls_wildcard
 }
 
 assert_urls() {

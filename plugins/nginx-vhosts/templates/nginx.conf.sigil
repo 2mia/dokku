@@ -1,0 +1,7 @@
+{{ if .SSL_INUSE }}
+{{ include "nossl.server.config" . }}
+{{ include "ssl.server.config" . }}
+{{ else }}
+{{ include "nossl.server.config" . }}
+{{ end }}
+{{ include "upstream.config" . }}

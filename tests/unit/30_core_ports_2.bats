@@ -79,12 +79,12 @@ check_urls() {
   echo "127.0.0.1.xip.io" > "$DOKKU_ROOT/VHOST"
   deploy_app
 
-  run bash -c "response=\"$(curl -s -S my-cool-guy-test-app.127.0.0.1.xip.io)\"; echo \$response; test \"\$response\" == \"nodejs/express\""
+  run bash -c "response=\"$(curl -s -S ${TEST_APP}.127.0.0.1.xip.io)\"; echo \$response; test \"\$response\" == \"nodejs/express\""
   echo "output: "$output
   echo "status: "$status
   assert_success
 
-  check_urls http://my-cool-guy-test-app.127.0.0.1.xip.io
+  check_urls http://${TEST_APP}.127.0.0.1.xip.io
 }
 
 @test "(core) dockerfile port exposure" {

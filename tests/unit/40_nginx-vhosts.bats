@@ -12,7 +12,6 @@ teardown() {
   destroy_app 0 $TEST_APP
   [[ -f "$DOKKU_ROOT/VHOST.bak" ]] && mv "$DOKKU_ROOT/VHOST.bak" "$DOKKU_ROOT/VHOST"
   [[ -f "$DOKKU_ROOT/HOSTNAME.bak" ]] && mv "$DOKKU_ROOT/HOSTNAME.bak" "$DOKKU_ROOT/HOSTNAME"
-  disable_tls_wildcard
 }
 
 assert_ssl_domain() {
@@ -65,6 +64,17 @@ assert_error_log() {
   assert_success
 }
 
+assert_external_port() {
+  local CID="$1"; local exit_status="$2"
+  local EXTERNAL_PORT_COUNT=$(docker port $CID | wc -l)
+  run /bin/bash -c "[[ $EXTERNAL_PORT_COUNT -gt 0 ]]"
+  if [[ "$exit_status" == "success" ]]; then
+    assert_success
+  else
+    assert_failure
+  fi
+}
+
 @test "(nginx-vhosts) nginx (no server tokens)" {
   deploy_app
   run /bin/bash -c "curl -s -D - $(dokku url $TEST_APP) -o /dev/null | egrep '^Server' | egrep '[0-9]+'"
@@ -80,38 +90,26 @@ assert_error_log() {
 }
 
 @test "(nginx-vhosts) nginx:build-config (wildcard SSL)" {
-  setup_test_tls_wildcard
+  setup_test_tls wildcard
   add_domain "wildcard1.dokku.me"
   add_domain "wildcard2.dokku.me"
-  add_domain "www.test.dokku.me"
   deploy_app
+  cat /home/dokku/${TEST_APP}/nginx.conf
   assert_ssl_domain "wildcard1.dokku.me"
   assert_ssl_domain "wildcard2.dokku.me"
-  assert_nonssl_domain "www.test.dokku.me"
-}
-
-@test "(nginx-vhosts) nginx:build-config (wildcard SSL & custom nginx template)" {
-  setup_test_tls_wildcard
-  add_domain "wildcard1.dokku.me"
-  add_domain "wildcard2.dokku.me"
-  custom_ssl_nginx_template
-  deploy_app
-  assert_ssl_domain "wildcard1.dokku.me"
-  assert_ssl_domain "wildcard2.dokku.me"
-  assert_http_success "customssltemplate.dokku.me"
 }
 
 @test "(nginx-vhosts) nginx:build-config (wildcard SSL & unrelated domain)" {
   destroy_app
   TEST_APP="${TEST_APP}.example.com"
-  setup_test_tls_wildcard
+  setup_test_tls wildcard
   deploy_app nodejs-express dokku@dokku.me:$TEST_APP
   run /bin/bash -c "egrep '*.dokku.me' $DOKKU_ROOT/${TEST_APP}/nginx.conf | wc -l"
   assert_output "0"
 }
 
 @test "(nginx-vhosts) nginx:build-config (with SSL and Multiple SANs)" {
-  setup_test_tls_with_sans
+  setup_test_tls sans
   add_domain "test.dokku.me"
   add_domain "www.test.dokku.me"
   add_domain "www.test.app.dokku.me"
@@ -121,10 +119,20 @@ assert_error_log() {
   assert_ssl_domain "www.test.app.dokku.me"
 }
 
+@test "(nginx-vhosts) nginx:build-config (wildcard SSL & custom nginx template)" {
+  setup_test_tls wildcard
+  add_domain "wildcard1.dokku.me"
+  add_domain "wildcard2.dokku.me"
+  deploy_app nodejs-express dokku@dokku.me:$TEST_APP custom_ssl_nginx_template
+  assert_ssl_domain "wildcard1.dokku.me"
+  assert_ssl_domain "wildcard2.dokku.me"
+  assert_http_redirect "http://${CUSTOM_TEMPLATE_SSL_DOMAIN}" "https://${CUSTOM_TEMPLATE_SSL_DOMAIN}:443/"
+  assert_http_success "https://${CUSTOM_TEMPLATE_SSL_DOMAIN}"
+}
+
 @test "(nginx-vhosts) nginx:build-config (custom nginx template)" {
   add_domain "www.test.app.dokku.me"
-  custom_nginx_template
-  deploy_app
+  deploy_app nodejs-express dokku@dokku.me:$TEST_APP custom_nginx_template
   assert_nonssl_domain "www.test.app.dokku.me"
   assert_http_success "customtemplate.dokku.me"
 }
@@ -138,11 +146,33 @@ assert_error_log() {
   assert_nonssl_domain "www.test.app.dokku.me"
 }
 
-@test "(nginx-vhosts) nginx:build-config (validate_nginx)" {
-  deploy_app
-  echo "some lame nginx config" > "$DOKKU_ROOT/$TEST_APP/nginx.conf.template"
-  run /bin/bash -c "dokku nginx:build-config $TEST_APP"
+@test "(nginx-vhosts) nginx:build-config (failed validate_nginx)" {
+  run deploy_app nodejs-express dokku@dokku.me:$TEST_APP bad_custom_nginx_template
   echo "output: "$output
   echo "status: "$status
   assert_failure
+}
+
+@test "(nginx-vhosts) nginx:enable/disable" {
+  deploy_app
+  assert_nonssl_domain "${TEST_APP}.dokku.me"
+
+  run dokku nginx:disable $TEST_APP
+  echo "output: "$output
+  echo "status: "$status
+  assert_success
+
+  for CID_FILE in $DOKKU_ROOT/$TEST_APP/CONTAINER.web.*; do
+    assert_external_port $(< $CID_FILE) success
+  done
+
+  run dokku nginx:enable $TEST_APP
+  echo "output: "$output
+  echo "status: "$status
+  assert_success
+  assert_http_success "${TEST_APP}.dokku.me"
+
+  for CID_FILE in $DOKKU_ROOT/$TEST_APP/CONTAINER.web.*; do
+    assert_external_port $(< $CID_FILE) failure
+  done
 }
