@@ -14,44 +14,6 @@ teardown() {
   [[ -f "$DOKKU_ROOT/HOSTNAME.bak" ]] && mv "$DOKKU_ROOT/HOSTNAME.bak" "$DOKKU_ROOT/HOSTNAME"
 }
 
-assert_ssl_domain() {
-  local domain=$1
-  assert_app_domain "${domain}"
-  assert_http_redirect "http://${domain}" "https://${domain}:443/"
-  assert_http_success "https://${domain}"
-}
-
-assert_nonssl_domain() {
-  local domain=$1
-  assert_app_domain "${domain}"
-  assert_http_success "http://${domain}"
-}
-
-assert_app_domain() {
-  local domain=$1
-  run /bin/bash -c "dokku domains $TEST_APP | grep -xF ${domain}"
-  echo "output: "$output
-  echo "status: "$status
-  assert_output "${domain}"
-}
-
-assert_http_redirect() {
-  local from=$1
-  local to=$2
-  run curl -kSso /dev/null -w "%{redirect_url}" "${from}"
-  echo "output: "$output
-  echo "status: "$status
-  assert_output "${to}"
-}
-
-assert_http_success() {
-  local url=$1
-  run curl -kSso /dev/null -w "%{http_code}" "${url}"
-  echo "output: "$output
-  echo "status: "$status
-  assert_output "200"
-}
-
 assert_access_log() {
   local prefix=$1
   run [ -a /var/log/nginx/$prefix-access.log ]
@@ -62,17 +24,6 @@ assert_error_log() {
   local prefix=$1
   run [ -a /var/log/nginx/$prefix-error.log ]
   assert_success
-}
-
-assert_external_port() {
-  local CID="$1"; local exit_status="$2"
-  local EXTERNAL_PORT_COUNT=$(docker port $CID | wc -l)
-  run /bin/bash -c "[[ $EXTERNAL_PORT_COUNT -gt 0 ]]"
-  if [[ "$exit_status" == "success" ]]; then
-    assert_success
-  else
-    assert_failure
-  fi
 }
 
 @test "(nginx-vhosts) nginx (no server tokens)" {
@@ -137,42 +88,9 @@ assert_external_port() {
   assert_http_success "customtemplate.dokku.me"
 }
 
-@test "(nginx-vhosts) nginx:build-config (no global VHOST and domains:add)" {
-  destroy_app
-  rm "$DOKKU_ROOT/VHOST"
-  create_app
-  add_domain "www.test.app.dokku.me"
-  deploy_app
-  assert_nonssl_domain "www.test.app.dokku.me"
-}
-
 @test "(nginx-vhosts) nginx:build-config (failed validate_nginx)" {
   run deploy_app nodejs-express dokku@dokku.me:$TEST_APP bad_custom_nginx_template
   echo "output: "$output
   echo "status: "$status
   assert_failure
-}
-
-@test "(nginx-vhosts) nginx:enable/disable" {
-  deploy_app
-  assert_nonssl_domain "${TEST_APP}.dokku.me"
-
-  run dokku nginx:disable $TEST_APP
-  echo "output: "$output
-  echo "status: "$status
-  assert_success
-
-  for CID_FILE in $DOKKU_ROOT/$TEST_APP/CONTAINER.web.*; do
-    assert_external_port $(< $CID_FILE) success
-  done
-
-  run dokku nginx:enable $TEST_APP
-  echo "output: "$output
-  echo "status: "$status
-  assert_success
-  assert_http_success "${TEST_APP}.dokku.me"
-
-  for CID_FILE in $DOKKU_ROOT/$TEST_APP/CONTAINER.web.*; do
-    assert_external_port $(< $CID_FILE) failure
-  done
 }

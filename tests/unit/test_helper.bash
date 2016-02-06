@@ -22,6 +22,7 @@ flunk() {
 
 # ShellCheck doesn't know about $status from Bats
 # shellcheck disable=SC2154
+# shellcheck disable=SC2120
 assert_success() {
   if [[ "$status" -ne 0 ]]; then
     flunk "command failed with exit status $status"
@@ -111,6 +112,53 @@ destroy_app() {
 
 add_domain() {
   dokku domains:add $TEST_APP $1
+}
+
+# shellcheck disable=SC2119
+check_urls() {
+  local PATTERN="$1"
+  run bash -c "dokku --quiet urls $TEST_APP | egrep \"${1}\""
+  echo "output: "$output
+  echo "status: "$status
+  assert_success
+}
+
+assert_http_success() {
+  local url=$1
+  run curl -kSso /dev/null -w "%{http_code}" "${url}"
+  echo "output: "$output
+  echo "status: "$status
+  assert_output "200"
+}
+
+assert_ssl_domain() {
+  local domain=$1
+  assert_app_domain "${domain}"
+  assert_http_redirect "http://${domain}" "https://${domain}:443/"
+  assert_http_success "https://${domain}"
+}
+
+assert_nonssl_domain() {
+  local domain=$1
+  assert_app_domain "${domain}"
+  assert_http_success "http://${domain}"
+}
+
+assert_app_domain() {
+  local domain=$1
+  run /bin/bash -c "dokku domains $TEST_APP | grep -xF ${domain}"
+  echo "output: "$output
+  echo "status: "$status
+  assert_output "${domain}"
+}
+
+assert_http_redirect() {
+  local from=$1
+  local to=$2
+  run curl -kSso /dev/null -w "%{redirect_url}" "${from}"
+  echo "output: "$output
+  echo "status: "$status
+  assert_output "${to}"
 }
 
 deploy_app() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-[[ " domains domains:setup domains:add domains:clear domains:remove help domains:help " == *" $1 "* ]] || exit $DOKKU_NOT_IMPLEMENTED_EXIT
+[[ " domains domains:setup domains:add domains:clear domains:remove domains:disable domains:enable help domains:help " == *" $1 "* ]] || exit $DOKKU_NOT_IMPLEMENTED_EXIT
 set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
 source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
 source "$PLUGIN_AVAILABLE_PATH/domains/functions"
@@ -46,11 +46,23 @@ case "$1" in
     domains_remove "$@"
     ;;
 
+  domains:disable)
+    [[ -z $2 ]] && dokku_log_fail "Please specify an app to run the command on"
+    domains_disable "$2"
+    ;;
+
+  domains:enable)
+    [[ -z $2 ]] && dokku_log_fail "Please specify an app to run the command on"
+    domains_enable "$2"
+    ;;
+
   help | domains:help)
     cat<<EOF
     domains <app>, List custom domains for app
     domains:add <app> DOMAIN, Add a custom domain to app
     domains:clear <app>, Clear all custom domains for app
+    domains:disable <app>, Disable VHOST support
+    domains:enable <app>, Enable VHOST support
     domains:remove <app> DOMAIN, Remove a custom domain from app
 EOF
     ;;

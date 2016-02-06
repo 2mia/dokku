@@ -33,6 +33,7 @@ export DOKKU_CONTAINER_LABEL=dokku
 export DOKKU_GLOBAL_RUN_ARGS="--label=$DOKKU_CONTAINER_LABEL"
 
 source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
+source "$PLUGIN_CORE_AVAILABLE_PATH/proxy/functions"
 
 [[ -f $DOKKU_ROOT/dokkurc ]] && source $DOKKU_ROOT/dokkurc
 [[ -d $DOKKU_ROOT/.dokkurc ]] && for f in $DOKKU_ROOT/.dokkurc/*; do source $f; done
@@ -113,6 +114,7 @@ case "$1" in
     DOKKU_SKIP_DEFAULT_CHECKS=${DOKKU_APP_SKIP_DEFAULT_CHECKS:="$DOKKU_GLOBAL_SKIP_DEFAULT_CHECKS"}
 
     DOKKU_DEFAULT_DOCKER_ARGS=$(: | plugn trigger docker-args-deploy $APP $IMAGE_TAG)
+    DOKKU_IS_APP_PROXY_ENABLED="$(is_app_proxy_enabled $APP)"
 
     while read -r line || [[ -n "$line" ]]; do
       [[ "$line" =~ ^#.* ]] && continue
@@ -131,7 +133,6 @@ case "$1" in
         DOCKER_ARGS="$DOKKU_DEFAULT_DOCKER_ARGS"
         DOCKER_ARGS+=" -e DYNO='$PROC_TYPE.$CONTAINER_INDEX' "
         [[ "$DOKKU_TRACE" ]] && DOCKER_ARGS+=" -e TRACE=true "
-        BIND_EXTERNAL=$(plugn trigger bind-external-ip $APP)
 
         [[ -n "$DOKKU_HEROKUISH" ]] && START_CMD="/start $PROC_TYPE"
 
@@ -142,7 +143,7 @@ case "$1" in
 
         if [[ "$PROC_TYPE" == "web" ]]; then
           port=${DOKKU_DOCKERFILE_PORT:=5000}
-          if [[ "$BIND_EXTERNAL" = "true" ]]; then
+          if [[ "$DOKKU_IS_APP_PROXY_ENABLED" = "false" ]]; then
             id=$(docker run $DOKKU_GLOBAL_RUN_ARGS -d -p $port -e PORT=$port $DOCKER_ARGS $IMAGE $START_CMD)
             port=$(docker port $id $port | sed 's/[0-9.]*://')
             ipaddr=127.0.0.1

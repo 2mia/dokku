@@ -4,6 +4,7 @@ load test_helper
 
 setup() {
   create_app
+  DOCKERFILE="$BATS_TMPDIR/Dockerfile"
 }
 
 teardown() {
@@ -67,3 +68,28 @@ build_nginx_config() {
   assert_success
 }
 
+@test "(core) port exposure (dockerfile raw port)" {
+  source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
+  cat<<EOF > $DOCKERFILE
+EXPOSE 3001/udp
+EXPOSE 3003
+EXPOSE  3000/tcp
+EOF
+  run get_dockerfile_exposed_port $DOCKERFILE
+  echo "output: "$output
+  echo "status: "$status
+  assert_output 3003
+}
+
+@test "(core) port exposure (dockerfile tcp port)" {
+  source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
+  cat<<EOF > $DOCKERFILE
+EXPOSE 3001/udp
+EXPOSE  3000/tcp
+EXPOSE 3003
+EOF
+  run get_dockerfile_exposed_port $DOCKERFILE
+  echo "output: "$output
+  echo "status: "$status
+  assert_output 3000
+}
