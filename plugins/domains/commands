@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-[[ " domains domains:setup domains:add domains:clear domains:remove domains:disable domains:enable help domains:help " == *" $1 "* ]] || exit $DOKKU_NOT_IMPLEMENTED_EXIT
+[[ " domains domains:setup domains:add domains:clear domains:remove domains:disable domains:enable domains:set-global help domains:help " == *" $1 "* ]] || exit $DOKKU_NOT_IMPLEMENTED_EXIT
 set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
 source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
 source "$PLUGIN_AVAILABLE_PATH/domains/functions"
@@ -7,7 +7,6 @@ source "$PLUGIN_AVAILABLE_PATH/nginx-vhosts/functions"
 
 case "$1" in
   domains)
-    [[ -z $2 ]] && dokku_log_fail "Please specify an app to run the command on"
     domains_main "$2"
     ;;
 
@@ -56,14 +55,20 @@ case "$1" in
     domains_enable "$2"
     ;;
 
+  domains:set-global)
+    [[ -z $2 ]] && dokku_log_fail "Please specify a global domain name"
+    domains_set_global "$2"
+    ;;
+
   help | domains:help)
     cat<<EOF
-    domains <app>, List custom domains for app
-    domains:add <app> DOMAIN, Add a custom domain to app
-    domains:clear <app>, Clear all custom domains for app
+    domains [<app>], List domains
+    domains:add <app> DOMAIN, Add a domain to app
+    domains:clear <app>, Clear all domains for app
     domains:disable <app>, Disable VHOST support
     domains:enable <app>, Enable VHOST support
-    domains:remove <app> DOMAIN, Remove a custom domain from app
+    domains:remove <app> DOMAIN, Remove a domain from app
+    domains:set-global <domain>, Set global domain name
 EOF
     ;;
 
