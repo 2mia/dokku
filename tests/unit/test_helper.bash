@@ -165,9 +165,11 @@ deploy_app() {
   local APP_TYPE="$1"; local APP_TYPE=${APP_TYPE:="nodejs-express"}
   local GIT_REMOTE="$2"; local GIT_REMOTE=${GIT_REMOTE:="dokku@dokku.me:$TEST_APP"}
   local CUSTOM_TEMPLATE="$3"; local TMP=$(mktemp -d -t "dokku.me.XXXXX")
+  local CUSTOM_PATH="$4"
+
   rmdir $TMP && cp -r ./tests/apps/$APP_TYPE $TMP
   cd $TMP || exit 1
-  [[ -n "$CUSTOM_TEMPLATE" ]] && $CUSTOM_TEMPLATE $TEST_APP $TMP
+  [[ -n "$CUSTOM_TEMPLATE" ]] && $CUSTOM_TEMPLATE $TEST_APP $TMP/$CUSTOM_PATH
   git init
   git config user.email "robot@example.com"
   git config user.name "Test Robot"
@@ -215,6 +217,8 @@ setup_test_tls() {
 custom_ssl_nginx_template() {
   local APP="$1"; local APP_REPO_DIR="$2"
   [[ -z "$APP" ]] && local APP="$TEST_APP"
+  mkdir -p $APP_REPO_DIR
+
   echo "injecting custom_ssl_nginx_template -> $APP_REPO_DIR/nginx.conf.sigil"
 cat<<EOF > "$APP_REPO_DIR/nginx.conf.sigil"
 server {
@@ -261,6 +265,8 @@ EOF
 custom_nginx_template() {
   local APP="$1"; local APP_REPO_DIR="$2"
   [[ -z "$APP" ]] && local APP="$TEST_APP"
+  mkdir -p $APP_REPO_DIR
+
   echo "injecting custom_nginx_template -> $APP_REPO_DIR/nginx.conf.sigil"
 cat<<EOF > "$APP_REPO_DIR/nginx.conf.sigil"
 server {

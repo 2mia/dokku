@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load test_helper
+source "$PLUGIN_CORE_AVAILABLE_PATH/config/functions"
 
 setup() {
   [[ -f "$DOKKU_ROOT/VHOST" ]] && cp -fp "$DOKKU_ROOT/VHOST" "$DOKKU_ROOT/VHOST.bak"
@@ -81,9 +82,19 @@ assert_error_log() {
   assert_http_success "https://${CUSTOM_TEMPLATE_SSL_DOMAIN}"
 }
 
-@test "(nginx-vhosts) nginx:build-config (custom nginx template)" {
+@test "(nginx-vhosts) nginx:build-config (custom nginx template - default path)" {
   add_domain "www.test.app.dokku.me"
   deploy_app nodejs-express dokku@dokku.me:$TEST_APP custom_nginx_template
+  assert_nonssl_domain "www.test.app.dokku.me"
+  assert_http_success "customtemplate.dokku.me"
+}
+
+@test "(nginx-vhosts) nginx:build-config (custom nginx template - custom path)" {
+  add_domain "www.test.app.dokku.me"
+  dokku config:set --no-restart $TEST_APP NGINX_CUSTOM_TEMPLATE_PATH=/app/.dokku
+  echo "output: "$output
+  echo "status: "$status
+  deploy_app nodejs-express dokku@dokku.me:$TEST_APP custom_nginx_template .dokku/
   assert_nonssl_domain "www.test.app.dokku.me"
   assert_http_success "customtemplate.dokku.me"
 }

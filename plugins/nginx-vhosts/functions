@@ -103,13 +103,14 @@ validate_ssl_domains() {
 nginx_build_config() {
   local desc="build nginx config to proxy app containers using sigil"
   local APP="$1"; verify_app_name "$APP"
-  local SIGIL_BIN=$(which sigil)
   local DOKKU_APP_LISTEN_PORT="$2"; local DOKKU_APP_LISTEN_IP="$3"
   local VHOST_PATH="$DOKKU_ROOT/$APP/VHOST"; local URLS_PATH="$DOKKU_ROOT/$APP/URLS"
-  local APP_SSL_PATH="$DOKKU_ROOT/$APP/tls"; local TEMPLATE_NAME="nginx.conf.sigil"
-  local BUILTIN_NGINX_TEMPLATE="$PLUGIN_AVAILABLE_PATH/nginx-vhosts/templates/$TEMPLATE_NAME"
-  local NGINX_TEMPLATE="$BUILTIN_NGINX_TEMPLATE"; local SCHEME=http
-  local NGINX_TEMPLATE_SOURCE="built-in"
+  local DEFAULT_CUSTOM_NGINX_TEMPLATE_PATH="/app"; local NGINX_TEMPLATE_NAME="nginx.conf.sigil"
+  local DEFAULT_NGINX_TEMPLATE="$PLUGIN_AVAILABLE_PATH/nginx-vhosts/templates/$NGINX_TEMPLATE_NAME"
+  local NGINX_TEMPLATE="$DEFAULT_NGINX_TEMPLATE"; local SCHEME=http
+  local NGINX_TEMPLATE_SOURCE="built-in"; local APP_SSL_PATH="$DOKKU_ROOT/$APP/tls"
+  local APP_CUSTOM_NGINX_TEMPLATE_PATH="$(config_get $APP NGINX_CUSTOM_TEMPLATE_PATH)"
+  local CUSTOM_TEMPLATE_PATH=${APP_CUSTOM_NGINX_TEMPLATE_PATH:="$DEFAULT_CUSTOM_NGINX_TEMPLATE_PATH"}
 
   local DOKKU_DISABLE_PROXY=$(config_get $APP DOKKU_DISABLE_PROXY)
   local IS_APP_VHOST_ENABLED=$(is_app_vhost_enabled $APP)
@@ -135,11 +136,11 @@ nginx_build_config() {
 
     local TMPDIR=$(mktemp -d /tmp/nginx_template.XXXXX)
     local NGINX_CONF=$(mktemp -p ${TMPDIR} -t "nginx.conf.XXXXXX")
-    local APP_NGINX_TEMPLATE="$TMPDIR/$TEMPLATE_NAME"
+    local APP_NGINX_TEMPLATE="$TMPDIR/$NGINX_TEMPLATE_NAME"
     trap 'rm -rf "$NGINX_CONF $TMPDIR" > /dev/null' RETURN
 
     local DOKKU_APP_CIDS=($(get_app_container_ids $APP))
-    docker cp "${DOKKU_APP_CIDS[0]}:/app/$TEMPLATE_NAME" "$TMPDIR/" 2> /dev/null || true
+    docker cp "${DOKKU_APP_CIDS[0]}:${CUSTOM_TEMPLATE_PATH}/${NGINX_TEMPLATE_NAME}" "$TMPDIR/" 2> /dev/null || true
     if [[ -f "$APP_NGINX_TEMPLATE" ]]; then
       dokku_log_info1 'Overriding default nginx.conf with detected nginx.conf.sigil'
       local NGINX_TEMPLATE="$APP_NGINX_TEMPLATE"
@@ -176,7 +177,7 @@ nginx_build_config() {
 
     # execute sigil template processing
     xargs -i echo "-----> Configuring {}...(using $NGINX_TEMPLATE_SOURCE template)" <<< "$(echo ${SSL_VHOSTS} ${NONSSL_VHOSTS} | tr ' ' '\n' | sort -u)"
-    $SIGIL_BIN "${SIGIL_PARAMS[@]}" > $NGINX_CONF
+    sigil "${SIGIL_PARAMS[@]}" > $NGINX_CONF
 
     if is_deployed "$APP"; then
       dokku_log_info1 "Creating $SCHEME nginx.conf"
