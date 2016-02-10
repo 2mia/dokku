@@ -54,21 +54,26 @@ nginx_logs() {
 configure_nginx_ports() {
   local desc="configure nginx listening ports"
   local APP=$1; verify_app_name "$APP"
+  local RAW_TCP_PORTS="$(get_app_raw_tcp_ports $APP)"
   local DOKKU_NGINX_PORT=$(config_get $APP DOKKU_NGINX_PORT)
   local DOKKU_NGINX_SSL_PORT=$(config_get $APP DOKKU_NGINX_SSL_PORT)
   local IS_APP_VHOST_ENABLED="$(is_app_vhost_enabled $APP)"
 
   if [[ -z "$DOKKU_NGINX_PORT" ]]; then
-    if [[ "$IS_APP_VHOST_ENABLED" == "false" ]]; then
-      dokku_log_info1 "no nginx port set. setting to random open high port"
-      local NGINX_PORT=$(get_available_port)
-    else
-      local NGINX_PORT=80
+    if [[ -z "$RAW_TCP_PORTS" ]]; then
+      if [[ "$IS_APP_VHOST_ENABLED" == "false" ]]; then
+        dokku_log_info1 "no nginx port set. setting to random open high port"
+        local NGINX_PORT=$(get_available_port)
+      else
+        local NGINX_PORT=80
+      fi
     fi
-    config_set --no-restart $APP DOKKU_NGINX_PORT=${NGINX_PORT}
+    if [[ -n "$NGINX_PORT" ]]; then
+      config_set --no-restart $APP DOKKU_NGINX_PORT="${NGINX_PORT}"
+    fi
   fi
 
-  if (is_ssl_enabled $APP) && [[ -z "$DOKKU_NGINX_SSL_PORT" ]]; then
+  if (is_ssl_enabled $APP) && [[ -z "$DOKKU_NGINX_SSL_PORT" ]] && [[ -z "$RAW_TCP_PORTS" ]]; then
     if [[ "$IS_APP_VHOST_ENABLED" == "false" ]]; then
       dokku_log_info1 "no nginx ssl port set. setting to random open high port"
       local NGINX_SSL_PORT=$(get_available_port)
@@ -111,6 +116,7 @@ nginx_build_config() {
   local NGINX_TEMPLATE_SOURCE="built-in"; local APP_SSL_PATH="$DOKKU_ROOT/$APP/tls"
   local APP_CUSTOM_NGINX_TEMPLATE_PATH="$(config_get $APP NGINX_CUSTOM_TEMPLATE_PATH)"
   local CUSTOM_TEMPLATE_PATH=${APP_CUSTOM_NGINX_TEMPLATE_PATH:="$DEFAULT_CUSTOM_NGINX_TEMPLATE_PATH"}
+  local RAW_TCP_PORTS="$(get_app_raw_tcp_ports $APP)"
 
   local DOKKU_DISABLE_PROXY=$(config_get $APP DOKKU_DISABLE_PROXY)
   local IS_APP_VHOST_ENABLED=$(is_app_vhost_enabled $APP)
@@ -124,14 +130,16 @@ nginx_build_config() {
         local DOKKU_APP_LISTENER_IP=$(< $DOKKU_APP_IP_FILE)
         local DOKKU_APP_LISTENER_PORT=$(< $DOKKU_APP_PORT_FILE)
 
-        local DOKKU_APP_LISTENERS+=" "
-        local DOKKU_APP_LISTENERS+="$DOKKU_APP_LISTENER_IP:$DOKKU_APP_LISTENER_PORT"
-        local DOKKU_APP_LISTENERS+=" "
+        if [[ -z "$RAW_TCP_PORTS" ]]; then
+          local DOKKU_APP_LISTENERS+=" $DOKKU_APP_LISTENER_IP:$DOKKU_APP_LISTENER_PORT "
+        else
+          local DOKKU_APP_LISTENERS+=" $DOKKU_APP_LISTENER_IP "
+        fi
         local DOKKU_APP_LISTENERS=$(echo $DOKKU_APP_LISTENERS | xargs)
       done
       shopt -u nullglob
     elif [[ -n "$DOKKU_APP_LISTEN_PORT" ]] && [[ -n "$DOKKU_APP_LISTEN_IP" ]]; then
-      local PASSED_LISTEN_IP_PORT=true12
+      local PASSED_LISTEN_IP_PORT=true
     fi
 
     local TMPDIR=$(mktemp -d /tmp/nginx_template.XXXXX)
@@ -173,10 +181,11 @@ nginx_build_config() {
           PASSED_LISTEN_IP_PORT="$PASSED_LISTEN_IP_PORT"
           DOKKU_APP_LISTEN_PORT="$DOKKU_APP_LISTEN_PORT" DOKKU_APP_LISTEN_IP="$DOKKU_APP_LISTEN_IP"
           APP_SSL_PATH="$APP_SSL_PATH" SSL_INUSE="$SSL_INUSE" SSL_SERVER_NAME="$SSL_SERVER_NAME"
-          NGINX_PORT="$NGINX_PORT" NGINX_SSL_PORT="$NGINX_SSL_PORT")
+          NGINX_PORT="$NGINX_PORT" NGINX_SSL_PORT="$NGINX_SSL_PORT" RAW_TCP_PORTS="$RAW_TCP_PORTS")
 
     # execute sigil template processing
     xargs -i echo "-----> Configuring {}...(using $NGINX_TEMPLATE_SOURCE template)" <<< "$(echo ${SSL_VHOSTS} ${NONSSL_VHOSTS} | tr ' ' '\n' | sort -u)"
+    # echo "sigil ${SIGIL_PARAMS[@]}"
     sigil "${SIGIL_PARAMS[@]}" > $NGINX_CONF
 
     if is_deployed "$APP"; then

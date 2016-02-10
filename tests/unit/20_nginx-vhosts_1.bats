@@ -107,3 +107,18 @@ teardown() {
   check_urls http://${TEST_APP}.127.0.0.1.xip.io
   assert_http_success http://${TEST_APP}.127.0.0.1.xip.io
 }
+
+@test "(nginx-vhosts) nginx:build-config (dockerfile expose)" {
+  deploy_app dockerfile
+
+  add_domain "www.test.app.dokku.me"
+  check_urls http://${TEST_APP}.dokku.me:3000
+  check_urls http://${TEST_APP}.dokku.me:3003
+  check_urls http://www.test.app.dokku.me:3000
+  check_urls http://www.test.app.dokku.me:3003
+  assert_http_success http://${TEST_APP}.dokku.me:3000
+  assert_http_success http://${TEST_APP}.dokku.me:3003
+  assert_http_success http://www.test.app.dokku.me:3000
+  assert_http_success http://www.test.app.dokku.me:3003
+
+}

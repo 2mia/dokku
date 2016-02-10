@@ -75,10 +75,10 @@ EXPOSE 3001/udp
 EXPOSE 3003
 EXPOSE  3000/tcp
 EOF
-  run get_dockerfile_exposed_port $DOCKERFILE
+  run get_dockerfile_exposed_ports $DOCKERFILE
   echo "output: "$output
   echo "status: "$status
-  assert_output 3003
+  assert_output "3001/udp 3003 3000/tcp"
 }
 
 @test "(core) port exposure (dockerfile tcp port)" {
@@ -88,8 +88,8 @@ EXPOSE 3001/udp
 EXPOSE  3000/tcp
 EXPOSE 3003
 EOF
-  run get_dockerfile_exposed_port $DOCKERFILE
+  run get_dockerfile_exposed_ports $DOCKERFILE
   echo "output: "$output
   echo "status: "$status
-  assert_output 3000
+  assert_output "3001/udp 3000/tcp 3003"
 }

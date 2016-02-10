@@ -137,23 +137,35 @@ case "$1" in
         [[ -n "$DOKKU_HEROKUISH" ]] && START_CMD="/start $PROC_TYPE"
 
         if [[ -z "$DOKKU_HEROKUISH" ]]; then
-          DOKKU_DOCKERFILE_PORT=$(dokku config:get $APP DOKKU_DOCKERFILE_PORT || true)
+          DOKKU_DOCKERFILE_PORTS=($(dokku config:get $APP DOKKU_DOCKERFILE_PORTS || true))
           START_CMD=$(dokku config:get $APP DOKKU_DOCKERFILE_START_CMD || $START_CMD)
         fi
 
         if [[ "$PROC_TYPE" == "web" ]]; then
-          port=${DOKKU_DOCKERFILE_PORT:=5000}
-          if [[ "$DOKKU_IS_APP_PROXY_ENABLED" = "false" ]]; then
-            id=$(docker run $DOKKU_GLOBAL_RUN_ARGS -d -p $port -e PORT=$port $DOCKER_ARGS $IMAGE $START_CMD)
-            port=$(docker port $id $port | sed 's/[0-9.]*://')
-            ipaddr=127.0.0.1
+          if [[ -z "${DOKKU_DOCKERFILE_PORTS[*]}" ]]; then
+            port=5000
+            DOKKU_DOCKER_PORT_ARGS+="-p $port"
           else
+            for p in ${DOKKU_DOCKERFILE_PORTS[*]};do
+              if [[ ! "$p" =~ .*udp.* ]]; then
+                # set port to first non-udp port
+                p=${p//\/tcp}
+                port=${port:="$p"}
+              fi
+              DOKKU_DOCKER_PORT_ARGS+=" -p $p "
+            done
+          fi
+          if [[ "$DOKKU_IS_APP_PROXY_ENABLED" = "true" ]]; then
             id=$(docker run $DOKKU_GLOBAL_RUN_ARGS -d -e PORT=$port $DOCKER_ARGS $IMAGE $START_CMD)
             ipaddr=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $id)
             # Docker < 1.9 compatibility
             if [[ -z $ipaddr ]]; then
               ipaddr=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' $id)
             fi
+          else
+            id=$(docker run $DOKKU_GLOBAL_RUN_ARGS -d $DOKKU_DOCKER_PORT_ARGS -e PORT=$port $DOCKER_ARGS $IMAGE $START_CMD)
+            port=$(docker port $id $port | sed 's/[0-9.]*://')
+            ipaddr=127.0.0.1
           fi
         else
           id=$(docker run $DOKKU_GLOBAL_RUN_ARGS -d $DOCKER_ARGS $IMAGE $START_CMD)
@@ -180,7 +192,6 @@ case "$1" in
         [[ -n "$id" ]] && echo $id > "$DOKKU_CONTAINER_ID_FILE"
         [[ -n "$ipaddr" ]] && echo $ipaddr > "$DOKKU_IP_FILE"
         [[ -n "$port" ]] && echo $port > "$DOKKU_PORT_FILE"
-        [[ -n "$port" ]] && echo "http://$(< "$DOKKU_ROOT/HOSTNAME"):$port" > "$DOKKU_ROOT/$APP/URL"
 
         # cleanup pre-migration files
         rm -f $DOKKU_ROOT/$APP/CONTAINER $DOKKU_ROOT/$APP/IP $DOKKU_ROOT/$APP/PORT

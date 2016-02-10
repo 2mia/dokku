@@ -244,9 +244,22 @@ get_app_container_ids() {
   echo $DOKKU_CIDS
 }
 
-get_dockerfile_exposed_port() {
-  local DOCKERFILE_PORT=$(grep "^EXPOSE \+[[:digit:]]\+\(\/tcp\)\? *$" $1 | head -1 | sed 's/EXPOSE \+\([[:digit:]]\+\)\(\/tcp\)\?.*/\1/' || true)
-  echo "$DOCKERFILE_PORT"
+get_dockerfile_exposed_ports() {
+  local DOCKERFILE_PORTS=$(egrep "^EXPOSE " $1 | awk '{ print $2 }' | xargs) || true
+  echo "$DOCKERFILE_PORTS"
+}
+
+get_app_raw_tcp_ports() {
+  local APP="$1"; verify_app_name "$APP"
+  local DOCKERFILE_PORTS="$(config_get $APP DOKKU_DOCKERFILE_PORTS)"
+  for p in $DOCKERFILE_PORTS; do
+    if [[ ! "$p" =~ .*udp.* ]]; then
+      p=${p//\/tcp}
+      raw_tcp_ports+="$p "
+    fi
+  done
+  raw_tcp_ports="$(echo $raw_tcp_ports| xargs)"
+  echo "$raw_tcp_ports"
 }
 
 get_app_running_container_ids() {
@@ -478,4 +491,60 @@ enable_app_vhost() {
   config_unset --no-restart $APP DOKKU_NGINX_PORT DOKKU_NGINX_SSL_PORT
   [[ "$2" == "--no-restart" ]] && local CONFIG_SET_ARGS=$2
   config_set $CONFIG_SET_ARGS $APP NO_VHOST=0
+}
+
+get_app_urls() {
+  local APP="$2"; verify_app_name "$APP"
+  local RAW_TCP_PORTS="$(get_app_raw_tcp_ports $APP)"
+  local URLS_FILE="$DOKKU_ROOT/$APP/URLS"
+
+  if [[ -s "$URLS_FILE" ]]; then
+    local app_urls="$(egrep -v "^#" $URLS_FILE)"
+    if [[ -n "$RAW_TCP_PORTS" ]]; then
+      for url in ${app_urls[*]}; do
+        for p in $RAW_TCP_PORTS; do
+          local port_urls+="$url:$p "
+        done
+      done
+      local port_urls="$(echo $port_urls| xargs)"
+    fi
+    local URLS=${port_urls:=$app_urls}
+    case "$1" in
+      url)
+        echo "$URLS" | tr ' ' '\n' | head -n1
+      ;;
+      urls)
+        echo "$URLS" | tr ' ' '\n'
+      ;;
+    esac
+  else
+    local SCHEME="http"; local SSL="$DOKKU_ROOT/$APP/tls"
+    local DOKKU_NGINX_PORT=$(config_get $APP DOKKU_NGINX_PORT || true)
+    local DOKKU_NGINX_SSL_PORT=$(config_get $APP DOKKU_NGINX_SSL_PORT || true)
+
+    if [[ -e "$SSL/server.crt" && -e "$SSL/server.key" ]]; then
+      local SCHEME="https"
+    fi
+
+    if [[ "$(is_app_proxy_enabled $APP)" == "false" ]]; then
+      shopt -s nullglob
+      for PORT_FILE in $DOKKU_ROOT/$APP/PORT.*; do
+        echo "$SCHEME://$(< "$DOKKU_ROOT/HOSTNAME"):$(< "$PORT_FILE") (container)"
+      done
+      shopt -u nullglob
+    elif [[ -n "$DOKKU_NGINX_PORT" ]] || [[ -n "$DOKKU_NGINX_SSL_PORT" ]]; then
+      if [[ -n "$DOKKU_NGINX_PORT" ]];then
+        echo "http://$(< "$DOKKU_ROOT/HOSTNAME"):$DOKKU_NGINX_PORT ($(get_app_proxy_type $APP))"
+      fi
+      if [[ -n "$DOKKU_NGINX_SSL_PORT" ]]; then
+        echo "https://$(< "$DOKKU_ROOT/HOSTNAME"):$DOKKU_NGINX_SSL_PORT ($(get_app_proxy_type $APP)-ssl)"
+      fi
+    elif [[ -n "$RAW_TCP_PORTS" ]]; then
+      for p in $RAW_TCP_PORTS; do
+        echo "http://$(< "$DOKKU_ROOT/HOSTNAME"):$p"
+      done
+    else
+      echo "$SCHEME://$(< "$DOKKU_ROOT/VHOST")"
+    fi
+  fi
 }
